@@ -1,0 +1,40 @@
+name: Validate QPACK peer capacity
+on:
+  push:
+    branches: [codex/validate-qpack]
+permissions:
+  contents: read
+jobs:
+  qpack:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: 98c65f24236237531350688f81daf22645fd7dd0
+          persist-credentials: false
+      - uses: ./.github/actions/install-build-deps
+      - name: Focused regression
+        run: cargo test --locked -p neqo-qpack required_insert_count_uses_peer_capacity
+      - name: QPACK tests
+        run: cargo test --locked -p neqo-qpack
+      - name: Original modulus regression control
+        shell: bash
+        run: |
+          trap 'git checkout -- neqo-qpack/src/encoder.rs' EXIT
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('neqo-qpack/src/encoder.rs')
+          s = p.read_text()
+          old = 'self.peer_max_table_size / to_u64(ADDITIONAL_TABLE_ENTRY_SIZE)'
+          assert s.count(old) == 1
+          p.write_text(s.replace(old, 'self.table.capacity() / to_u64(ADDITIONAL_TABLE_ENTRY_SIZE)'))
+          PY
+          set +e
+          cargo test --locked -p neqo-qpack required_insert_count_uses_peer_capacity > /tmp/qpack-control.log 2>&1
+          result=$?
+          set -e
+          cat /tmp/qpack-control.log
+          test "$result" -ne 0
+          grep -F 'left: 1' /tmp/qpack-control.log
+          grep -F 'right: 5' /tmp/qpack-control.log
