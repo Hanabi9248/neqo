@@ -44,7 +44,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          export TEST_FIXTURE_DB="$GITHUB_WORKSPACE/test-fixture/db"
+          # The certificate database belongs to the pinned nss-rs dependency.
+          # Keep its compiled-in path while running on the build machine.
+          unset TEST_FIXTURE_DB
           sudo ip link set dev lo mtu 1504
           mkdir -p comparison
           uname -a | tee comparison/environment.txt
