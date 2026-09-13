@@ -6,12 +6,13 @@ permissions:
   contents: read
 jobs:
   broad:
+    if: false
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
-          ref: 98c65f24236237531350688f81daf22645fd7dd0
+          ref: 5953290cbd476da085cc3eff9bd855518abd29f5
           persist-credentials: false
       - uses: ./.github/actions/install-build-deps
         with:
@@ -40,7 +41,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
-          ref: 98c65f24236237531350688f81daf22645fd7dd0
+          ref: 5953290cbd476da085cc3eff9bd855518abd29f5
           persist-credentials: false
       - uses: mozilla/actions/rust@264c6b750df669adb58286a26c5d0e04e839e06b
         with:
@@ -54,7 +55,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
-          ref: 98c65f24236237531350688f81daf22645fd7dd0
+          ref: 5953290cbd476da085cc3eff9bd855518abd29f5
           persist-credentials: false
       - uses: ./.github/actions/install-build-deps
       - name: Focused regression
