@@ -1,0 +1,68 @@
+name: Compare QPACK upload performance
+on:
+  push:
+    branches: [codex/validate-qpack-upload]
+    paths: [.github/workflows/validate-neqo-upload.yml]
+permissions:
+  contents: read
+jobs:
+  compare:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      CARGO_PROFILE_RELEASE_LTO: true
+      CARGO_PROFILE_RELEASE_CODEGEN_UNITS: 1
+      MTU: 1504
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: 5953290cbd476da085cc3eff9bd855518abd29f5
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: ./.github/actions/install-build-deps
+      - name: Build pinned baseline and PR benchmark
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/qpack-bench"
+          for revision in d65f313096502aa1e711fd4a79030daca5c45633 5953290cbd476da085cc3eff9bd855518abd29f5; do
+            git checkout --detach "$revision"
+            cargo bench --locked -p neqo-bin --bench main --features bench --no-run --message-format=json > "$RUNNER_TEMP/qpack-bench/build-$revision.json"
+            python3 - "$RUNNER_TEMP/qpack-bench" "$revision" <<'PY'
+          import json, pathlib, shutil, sys
+          directory, revision = pathlib.Path(sys.argv[1]), sys.argv[2]
+          executables = []
+          for line in (directory / f'build-{revision}.json').read_text().splitlines():
+              row = json.loads(line)
+              if row.get('reason') == 'compiler-artifact' and row['target']['name'] == 'main' and row.get('executable'):
+                  executables.append(row['executable'])
+          assert len(executables) == 1, executables
+          shutil.copy2(executables[0], directory / revision)
+          PY
+          done
+      - name: Interleave baseline and PR measurements
+        shell: bash
+        run: |
+          set -euo pipefail
+          export TEST_FIXTURE_DB="$GITHUB_WORKSPACE/test-fixture/db"
+          sudo ip link set dev lo mtu 1504
+          mkdir -p comparison
+          uname -a | tee comparison/environment.txt
+          lscpu >> comparison/environment.txt
+          for round in 1 2 3; do
+            if [ "$round" = 2 ]; then
+              revisions='5953290cbd476da085cc3eff9bd855518abd29f5 d65f313096502aa1e711fd4a79030daca5c45633'
+            else
+              revisions='d65f313096502aa1e711fd4a79030daca5c45633 5953290cbd476da085cc3eff9bd855518abd29f5'
+            fi
+            for revision in $revisions; do
+              "$RUNNER_TEMP/qpack-bench/$revision" --bench --noplot '1-100mb-req' 2>&1 | tee "comparison/round-$round-$revision.txt"
+              cp -a target/criterion "comparison/criterion-$round-$revision"
+            done
+          done
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: qpack-upload-comparison
+          path: comparison
+          retention-days: 3
