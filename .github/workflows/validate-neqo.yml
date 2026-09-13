@@ -5,7 +5,50 @@ on:
 permissions:
   contents: read
 jobs:
+  broad:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: 98c65f24236237531350688f81daf22645fd7dd0
+          persist-credentials: false
+      - uses: ./.github/actions/install-build-deps
+        with:
+          components: clippy
+          tools: cargo-hack,cargo-deny,cargo-machete
+      - name: Workspace tests
+        run: cargo test --locked --features ci
+      - name: Feature combinations
+        if: always()
+        run: cargo hack clippy --locked --feature-powerset --all-targets --exclude-features gecko,ci --mutually-exclusive-features bench,blapi,build-fuzzing-corpus,default,disable-encryption -- -D warnings
+      - name: Documentation
+        if: always()
+        env:
+          RUSTDOCFLAGS: --deny rustdoc::broken_intra_doc_links --deny warnings
+        run: cargo doc --locked --workspace --no-deps --document-private-items
+      - name: Dependency checks
+        if: always()
+        run: |
+          cargo deny check advisories
+          cargo deny check bans licenses sources
+          cargo machete --with-metadata
+          cargo hack --workspace --no-manifest-path machete --with-metadata
+  formatting:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: 98c65f24236237531350688f81daf22645fd7dd0
+          persist-credentials: false
+      - uses: mozilla/actions/rust@264c6b750df669adb58286a26c5d0e04e839e06b
+        with:
+          version: nightly
+          components: rustfmt
+      - run: cargo +nightly fmt --all -- --check
   qpack:
+    if: false
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
